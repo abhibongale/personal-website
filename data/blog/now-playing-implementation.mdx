@@ -1,0 +1,276 @@
+---
+title: 'Now-Playing Research Paper: Streamlined Implementation'
+summary: 'Streamlined implementation of the now-playing research paper'
+date: 2025-05-26T15:32:14Z
+lastmod: '2021-02-01'
+draft: false
+tags: ['AI', 'PyTorch', 'guide']
+---
+In this blog is a complement to the Now Playing blog,  brief  about Now Playing paper while in this one we talk solely on neural network fingerprinter implementation
+
+--- 
+
+We will implement the streamlined version of Now Playing architecture. We will train the data on BurdCLEF-2024 dataset from kaggle. 
+
+We have to start with creating a class to load the dataset from our file system into a format that can be used to train our model. We will be using PyTorch for implementation.
+# Audio Dataset Preparation
+
+Audio data often comes in raw formats like `.mp3`, `.wav` or `.ogg`. To work with PyTorch we have create custom Dataset class.
+The goal of this custom class is to arrange audio files with corresponding labels and apply preprocessing steps to transform raw data input into usable input.
+
+```
+root_dir/
+    ├── class_1/
+    │   ├── audio1.wav
+    │   ├── audio2.wav
+    ├── class_2/
+    │   ├── audio3.wav
+```
+
+Since we are working with audio we will be using mel spectrogram as an input. We have to transform raw data into mel spectrogram by preprocessing data while loading it.
+
+> Naturally question arise why we cannot use raw audio format such .mp3, `.wav` or `.ogg`?.
+
+Because using raw audio have several imitations for the recognition tasks due to the following reasons:
+	1. **High Dimensionality**: Raw audio signals are sampled at high rates resulting in large amount of data which increases computational cost and memory usage.
+	2. **Lack of Frequency Domain Information**: Raw audio resides in the time domain, which does not explicity reveal the frequency content of the signal. Many recognition tasks required frequency information to capture pitch, timbre, and harmonic patterns.
+	3. **Noise Sensitivity**: Raw audio contains all the noise present in the signal, including environmental disturbances and recording artifacts. Noise in irrelevant frequency ranges can obscure meaningful patterns, making recognition less accurate.
+	4. **Inefficient Feature :** Raw audio lacks the structured representation of high-level features (e.g., formants in speech, harmonic in music). Extracting relevant features directly from raw audio requires more complex models, increasing the risk of overfitting.
+	5. **Poor Human Perception Alignment**:  Human hearing is non-linear, with greater sensitivity to certain frequency ranges. Raw audio does not reflect this preceptual bias, leading to inefficient feature extraction for tasks involving human-centric audio processing.
+
+Mel Scale solves this limitations, since the Mel scale is a perceptual scale of pitches that map frequencies to a scale that aligns with human auditory perception. It works by compressing the frequency spectrum non-linearly, emphasizing frequencies that human hear more distinctly (low and mid frequencies) and de-emphasizing higher frequencies.
+
+## Key steps for Data Preparation
+
+1. **Preprocessing**:
+    -  The `MelSpectrogram` transform convert audio waveforms into Mel spectrogram.
+    -  To improve stability during trainign  mel spectrograms are normalized to have zero mean and unit variance.
+
+2. **Triplet Sampling:**
+   - We will be using triplet loss function for training or model. It involves selecting three samples: an anchor, a same class as the anchor (positive) and a different class (negative)
+## Basic Workflow of our AudioDataset Class
+The `AudioDataset` class will:
+- Load audio data from directories.
+- Preprocess the data by converting it into mel spectrograms from raw audio format
+- Generate triplets of anchor, positivem and negative.
+
+```python
+import os
+import random
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from torch.utils.data import Dataset, DataLoader
+import torchaudio
+from torchaudio.transforms import MelSpectrogram
+
+# Dataset Class
+class AudioDataset(Dataset):
+    def __init__(self, root_dir, sample_rate=16000, n_mels=128, max_time_steps=1000):
+        self.root_dir = root_dir
+        self.sample_rate = sample_rate
+        self.n_mels = n_mels
+        self.max_time_steps = max_time_steps
+        self.data = []
+        self.label_to_files = {}
+        self.mel_transform = MelSpectrogram(
+            sample_rate=sample_rate, n_mels=n_mels, n_fft=1024, hop_length=512
+        )
+        self._load_data()
+	# loading the data from the folders
+    def _load_data(self):
+        for label_idx, label in enumerate(sorted(os.listdir(self.root_dir))):
+            label_path = os.path.join(self.root_dir, label)
+            if os.path.isdir(label_path):
+                for file in os.listdir(label_path):
+                    if file.endswith(".wav") or file.endswith(".ogg"):
+                        file_path = os.path.join(label_path, file)
+                        self.data.append((file_path, label_idx))
+                        if label_idx not in self.label_to_files:
+                            self.label_to_files[label_idx] = []
+                        self.label_to_files[label_idx].append(file_path)
+
+    # Return the length of dataset
+    def __len__(self):
+        return len(self.data)
+
+	# transform to mel spectrogram
+    def _load_audio(self, audio_path):
+        waveform, sample_rate = torchaudio.load(audio_path)
+
+        # Resample if necessary
+        if sample_rate != self.sample_rate:
+            resampler = torchaudio.transforms.Resample(orig_freq=sample_rate, new_freq=self.sample_rate)
+            waveform = resampler(waveform)
+
+        mel_spectrogram = self.mel_transform(waveform)
+        mel_spectrogram = (mel_spectrogram - mel_spectrogram.mean()) / mel_spectrogram.std()
+
+        # Pad or trim to fixed time steps
+        if mel_spectrogram.shape[-1] > self.max_time_steps:
+            mel_spectrogram = mel_spectrogram[:, :, :self.max_time_steps]
+        else:
+            mel_spectrogram = torch.nn.functional.pad(mel_spectrogram, (0, self.max_time_steps - mel_spectrogram.shape[-1]))
+
+        return mel_spectrogram
+
+    def get_triplet(self, idx):
+        anchor_path, anchor_label = self.data[idx]
+        positive_path = random.choice(self.label_to_files[anchor_label])
+        negative_label = random.choice([label for label in self.label_to_files if label != anchor_label])
+        negative_path = random.choice(self.label_to_files[negative_label])
+
+        anchor = self._load_audio(anchor_path)
+        positive = self._load_audio(positive_path)
+        negative = self._load_audio(negative_path)
+
+        return anchor, positive, negative
+
+    def __getitem__(self, idx):
+        return self.get_triplet(idx)
+
+```
+
+# Desigining the Neural Network Fingerprinter Model
+
+The NNFM model is at the heart of the pipeline. It learns to extract embedding from mel spectrograms.
+
+## Architecture
+
+Basically, are model is trying to understand the patterns with the help of loss function (triplet loss). After learning the patterns the model will able to create embedding. 
+
+Following are the layers we used to understand the patterns in our input:
+
+### 1. Convolution Layers.
+
+#### Key Concept
+A convolution is a methematical operation that combines two functions (input and kernel) and produces a output function. 
+The output function have a modify or characterized properties of the input function.
+
+In simple mathematical term, Convolution is a mathematical operation that expresses the amount of overlap of one function $g$ (kernel) as it is shifted over another function $f$ (input) over the $t \in [a, b]$
+
+$$
+( (f * g)(t) = \int_{-\infty}^{\infty} f(\tau)g(t - \tau) \, d\tau )
+$$
+
+Where $[f *g](t)$ is a convolution of function $f(\tau)$ and $g(t - \tau)$
+
+
+It is widely used in signal processing and convolutional neural networks (CNNs) to extract features like edges, textures, and patterns.
+
+
+
+### 2. Adaptive Pooling
+#### Key Concept
+
+We are using technique call adaptive pooling it allows us to fix the ouput size regardless the input size. It allows us 
+
+### 3. Fully Connected Layer:
+
+They are fundamental part of neural networks known as feedforward networks, they are used mostly at the final stages to map the features to particualar classes.
+
+```python
+# Model Definition
+class AudioCNN(nn.Module):
+    def __init__(self):
+        super(AudioCNN, self).__init__()
+        self.features = nn.Sequential(
+            nn.Conv2d(1, 16, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1)),
+            nn.ReLU(),
+            nn.MaxPool2d(kernel_size=(2, 2)),
+            nn.Conv2d(16, 32, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1)),
+            nn.ReLU(),
+            nn.MaxPool2d(kernel_size=(2, 2))
+        )
+        self.flatten = nn.Flatten()
+        self.fc = nn.Sequential(
+            nn.Linear(32 * (128 // 4) * (1000 // 4), 256),
+            nn.ReLU(),
+            nn.Linear(256, 128)
+        )
+
+    def forward(self, x):
+        x = self.features(x)
+        x = self.flatten(x)
+        x = self.fc(x)
+        return x
+```
+
+# Training with Tiplet Loss
+
+## Triplet Loss 
+
+- A tirplet loss ensures that embeddings are learned such that similar sampels are closer in the embedding space and dissimilar samles are farther apart.
+- Formula:
+
+$$
+f(a) - f(p)_2^2 + margin \leq ||f(a) - f(n)||_2^2
+$$
+
+Here, $(f(x))$ is the embedding function (our CNN in this case), and \(a\), \(p\), and \(n\) are the anchor, positive, and negative inputs, respectively.
+
+## Training the model
+
+## Collate Function
+To group anchor, positivre, and negative samples into separate tensors during batching.
+
+## Data Loader
+We are passing our data in batches of 4 triplets (anchor, positive, negative), while randomizing our whole data after each iteration (epoch).
+
+## Model and Loss
+AudioCNN: The CNN model defined earlier.
+TripletMarginLoss:
+
+margin=1.0: Ensures that negative embeddings are at least 1 unit farther from the anchor than positive embeddings.
+p=2: Uses L2 (Euclidean) distance.
+Adam: Optimizer for training with a learning rate of 0.001.
+
+```python
+# Training Script
+if __name__ == "__main__":
+    root_dir = "/kaggle/input/birdclef-2024/train_audio"
+    dataset = AudioDataset(root_dir=root_dir)
+
+    def collate_fn(batch):
+        anchors, positives, negatives = zip(*batch)
+        anchors = torch.stack(anchors)
+        positives = torch.stack(positives)
+        negatives = torch.stack(negatives)
+        return anchors, positives, negatives
+
+    dataloader = DataLoader(dataset, batch_size=4, shuffle=True, collate_fn=collate_fn, num_workers=4, pin_memory=True)
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = AudioCNN().to(device)
+    optimizer = optim.Adam(model.parameters(), lr=0.001)
+    triplet_loss = nn.TripletMarginLoss(margin=1.0, p=2).to(device)
+
+    scaler = torch.cuda.amp.GradScaler()  # Mixed precision scaler
+    accumulation_steps = 2  # Gradient accumulation
+
+    model.train()
+    for epoch in range(10):  # Number of epochs
+        running_loss = 0.0
+        for batch_idx, (anchors, positives, negatives) in enumerate(dataloader):
+            anchors = anchors.to(device, non_blocking=True)
+            positives = positives.to(device, non_blocking=True)
+            negatives = negatives.to(device, non_blocking=True)
+
+            optimizer.zero_grad()
+
+            with torch.cuda.amp.autocast():  # Mixed precision training
+                anchor_embeds = model(anchors)
+                positive_embeds = model(positives)
+                negative_embeds = model(negatives)
+                loss = triplet_loss(anchor_embeds, positive_embeds, negative_embeds) / accumulation_steps
+
+            scaler.scale(loss).backward()
+
+            if (batch_idx + 1) % accumulation_steps == 0:
+                scaler.step(optimizer)
+                scaler.update()
+
+            running_loss += loss.item()
+
+        print(f"Epoch {epoch + 1}, Loss: {running_loss / len(dataloader)}")
+```
