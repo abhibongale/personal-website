@@ -4,7 +4,11 @@ import { slug } from 'github-slugger'
 import tagData from 'app/tag-data.json'
 import { genPageMetadata } from 'app/seo'
 
-export const metadata = genPageMetadata({ title: 'Tags', description: 'Things I blog about' })
+export const metadata = genPageMetadata({
+  title: 'Tags',
+  description:
+    'Browse blog posts by topics including distributed systems, Kubernetes, cloud infrastructure, bare metal automation, Python, Go, and modern software engineering.',
+})
 
 export default async function Page() {
   const tagCounts = tagData as Record<string, number>
@@ -22,15 +26,11 @@ export default async function Page() {
           {tagKeys.length === 0 && 'No tags found.'}
           {sortedTags.map((t) => {
             return (
-              <div key={t} className="mt-2 mr-5 mb-2">
+              <div key={t} className="mr-3 mb-3 flex items-center gap-2">
                 <Tag text={t} />
-                <Link
-                  href={`/tags/${slug(t)}`}
-                  className="-ml-2 text-sm font-semibold text-gray-600 uppercase dark:text-gray-300"
-                  aria-label={`View posts tagged ${t}`}
-                >
-                  {` (${tagCounts[t]})`}
-                </Link>
+                <span className="text-sm font-medium text-gray-500 dark:text-gray-400">
+                  {tagCounts[t]}
+                </span>
               </div>
             )
           })}

@@ -7,6 +7,9 @@ import Comments from '@/components/Comments'
 import Link from '@/components/Link'
 import PageTitle from '@/components/PageTitle'
 import SectionContainer from '@/components/SectionContainer'
+import TableOfContents from '@/components/TableOfContents'
+import ReadingList from '@/components/ReadingList'
+import RelatedPosts from '@/components/RelatedPosts'
 import siteMetadata from '@/data/siteMetadata'
 import ScrollTopAndComment from '@/components/ScrollTopAndComment'
 
@@ -15,10 +18,11 @@ interface LayoutProps {
   children: ReactNode
   next?: { path: string; title: string }
   prev?: { path: string; title: string }
+  allPosts?: CoreContent<Blog>[]
 }
 
-export default function PostMinimal({ content, next, prev, children }: LayoutProps) {
-  const { slug, title, images } = content
+export default function PostMinimal({ content, next, prev, allPosts = [], children }: LayoutProps) {
+  const { slug, title, images, tags } = content
   const displayImage =
     images && images.length > 0 ? images[0] : 'https://picsum.photos/seed/picsum/800/400'
 
@@ -39,7 +43,22 @@ export default function PostMinimal({ content, next, prev, children }: LayoutPro
               <PageTitle>{title}</PageTitle>
             </div>
           </div>
-          <div className="prose dark:prose-invert max-w-none py-4">{children}</div>
+          <div className="xl:grid xl:grid-cols-[1fr_250px] xl:gap-8">
+            <div>
+              <div className="prose dark:prose-invert max-w-none py-4">{children}</div>
+              <div className="py-6">
+                <ReadingList filterTags={tags} maxItems={3} />
+              </div>
+              <div className="py-6">
+                <RelatedPosts currentSlug={slug} tags={tags} allPosts={allPosts} maxPosts={3} />
+              </div>
+            </div>
+            <aside className="hidden xl:block">
+              <div className="sticky top-24">
+                <TableOfContents />
+              </div>
+            </aside>
+          </div>
           {siteMetadata.comments && (
             <div className="pt-6 pb-6 text-center text-gray-700 dark:text-gray-300" id="comment">
               <Comments slug={slug} />
