@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useMemo } from 'react'
+import Image from '@/components/Image'
 import personalConfig from '@/data/personalConfig'
 
 interface ReadingItem {
