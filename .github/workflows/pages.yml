@@ -50,6 +50,7 @@ jobs:
         env:
           EXPORT: 1
           UNOPTIMIZED: 1
+          BASE_PATH: /personal-website
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
