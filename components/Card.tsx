@@ -6,7 +6,7 @@ const Card = ({ title, description, imgSrc, href }) => (
     <div
       className={`${
         imgSrc && 'h-full'
-      } overflow-hidden rounded-md border-2 border-gray-200/60 dark:border-gray-700/60`}
+      } card-hover group hover:border-primary-300 dark:hover:border-primary-700 overflow-hidden rounded-xl border-2 border-gray-200/60 bg-white shadow-sm dark:border-gray-700/60 dark:bg-gray-900`}
     >
       {imgSrc &&
         (href ? (
@@ -14,7 +14,7 @@ const Card = ({ title, description, imgSrc, href }) => (
             <Image
               alt={title}
               src={imgSrc}
-              className="object-cover object-center md:h-36 lg:h-48"
+              className="object-cover object-center transition-transform duration-300 group-hover:scale-105 md:h-36 lg:h-48"
               width={544}
               height={306}
             />
@@ -23,13 +23,13 @@ const Card = ({ title, description, imgSrc, href }) => (
           <Image
             alt={title}
             src={imgSrc}
-            className="object-cover object-center md:h-36 lg:h-48"
+            className="object-cover object-center transition-transform duration-300 group-hover:scale-105 md:h-36 lg:h-48"
             width={544}
             height={306}
           />
         ))}
       <div className="p-6">
-        <h2 className="mb-3 text-2xl leading-8 font-bold tracking-tight">
+        <h2 className="group-hover:text-primary-600 dark:group-hover:text-primary-400 mb-3 text-2xl leading-8 font-bold tracking-tight transition-colors">
           {href ? (
             <Link href={href} aria-label={`Link to ${title}`}>
               {title}

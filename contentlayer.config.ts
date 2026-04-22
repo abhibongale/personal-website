@@ -24,6 +24,7 @@ import rehypePrismPlus from 'rehype-prism-plus'
 import rehypePresetMinify from 'rehype-preset-minify'
 import siteMetadata from './data/siteMetadata'
 import { allCoreContent, sortPosts } from 'pliny/utils/contentlayer.js'
+import personalConfig from './data/personalConfig'
 import prettier from 'prettier'
 
 const root = process.cwd()
@@ -85,11 +86,34 @@ function createSearchIndex(allBlogs) {
     siteMetadata?.search?.provider === 'kbar' &&
     siteMetadata.search.kbarConfig.searchDocumentsPath
   ) {
+    // Get blog posts
+    const blogPosts = allCoreContent(sortPosts(allBlogs))
+
+    // Add reading list items to search index
+    const readingListItems = (personalConfig.readingList || []).map((item, index) => ({
+      title: item.title,
+      summary: item.description,
+      author: item.author,
+      tags: item.tags || [],
+      type: 'Shelf',
+      slug: `shelf#item-${index}`,
+      path: 'shelf',
+      date: item.year ? `${item.year}-01-01` : new Date().toISOString(),
+      readingTime: { text: '1 min read' },
+      // Additional metadata
+      itemType: item.type,
+      year: item.year,
+      link: item.link,
+    }))
+
+    // Combine blog posts and reading list
+    const searchData = [...blogPosts, ...readingListItems]
+
     writeFileSync(
       `public/${path.basename(siteMetadata.search.kbarConfig.searchDocumentsPath)}`,
-      JSON.stringify(allCoreContent(sortPosts(allBlogs)))
+      JSON.stringify(searchData)
     )
-    console.log('Local search index generated...')
+    console.log('Local search index generated (blog posts + reading list)...')
   }
 }
 
@@ -123,6 +147,25 @@ export const Blog = defineDocumentType(() => ({
         description: doc.summary,
         image: doc.images ? doc.images[0] : siteMetadata.socialBanner,
         url: `${siteMetadata.siteUrl}/${doc._raw.flattenedPath}`,
+        author: {
+          '@type': 'Person',
+          name: siteMetadata.author,
+        },
+        publisher: {
+          '@type': 'Organization',
+          name: siteMetadata.author,
+          logo: {
+            '@type': 'ImageObject',
+            url: `${siteMetadata.siteUrl}/static/images/logo.png`,
+          },
+        },
+        keywords: Array.isArray(doc.tags) ? doc.tags.join(', ') : '',
+        articleSection: Array.isArray(doc.tags) && doc.tags.length > 0 ? doc.tags[0] : 'Technology',
+        inLanguage: 'en-US',
+        mainEntityOfPage: {
+          '@type': 'WebPage',
+          '@id': `${siteMetadata.siteUrl}/${doc._raw.flattenedPath}`,
+        },
       }),
     },
   },
@@ -150,6 +193,7 @@ export const Authors = defineDocumentType(() => ({
 export default makeSource({
   contentDirPath: 'data',
   documentTypes: [Blog, Authors],
+  disableImportAliasWarning: true,
   mdx: {
     cwd: process.cwd(),
     remarkPlugins: [
