@@ -27,7 +27,9 @@ const Header = () => {
             className="rounded-lg transition-transform hover:scale-105"
           />
           {typeof siteMetadata.headerTitle === 'string' ? (
-            <div className="hidden text-2xl font-semibold sm:block">{siteMetadata.headerTitle}</div>
+            <div className="hidden text-xl font-semibold whitespace-nowrap sm:block md:text-2xl">
+              {siteMetadata.headerTitle}
+            </div>
           ) : (
             siteMetadata.headerTitle
           )}
