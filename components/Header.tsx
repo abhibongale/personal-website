@@ -20,14 +20,16 @@ const Header = () => {
       <Link href="/" aria-label={siteMetadata.headerTitle}>
         <div className="flex items-center gap-3">
           <Image
-            src="/static/images/logo.png"
+            src={siteMetadata.siteLogo}
             alt={siteMetadata.headerTitle}
             width={64}
             height={64}
             className="rounded-lg transition-transform hover:scale-105"
           />
           {typeof siteMetadata.headerTitle === 'string' ? (
-            <div className="hidden text-2xl font-semibold sm:block">{siteMetadata.headerTitle}</div>
+            <div className="hidden text-xl font-semibold whitespace-nowrap sm:block md:text-2xl">
+              {siteMetadata.headerTitle}
+            </div>
           ) : (
             siteMetadata.headerTitle
           )}
