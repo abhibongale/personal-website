@@ -20,7 +20,7 @@ const Header = () => {
       <Link href="/" aria-label={siteMetadata.headerTitle}>
         <div className="flex items-center gap-3">
           <Image
-            src="/static/images/logo.png"
+            src={siteMetadata.siteLogo}
             alt={siteMetadata.headerTitle}
             width={64}
             height={64}
