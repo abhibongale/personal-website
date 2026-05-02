@@ -1,0 +1,236 @@
+---
+title: 'Setup Guide: Running Podman in WSL2 with Podman Desktop (No VM required)'
+summary: 'Guide to Connect WSL2 with Podman Desktop. Just a native container workflow'
+date: 2026-05-02T15:32:14Z
+lastmod: '2026-05-02'
+draft: false
+layout: PostSimple
+tags: ['Podman', 'WSL2', 'Guide']
+---
+
+
+This is a guide explaining how to connect podman cli running in wsl 2 with
+Windows Podman Desktop without need of using Podman Machine as a VM backend.
+
+# Goal
+
+- Use WSL2 (In my case RHEL-10) as the only container backend
+- Run containers using Podman insde WSL2
+- View and manage containers using Podman Desktop running on Windows
+- Avoid Podman Machine (VM)
+
+
+# Architecure
+
+```
+Windows
+  └── Podman Desktop
+        └── SSH connection
+              └── WSL2 RHEL 10
+                    └── Podman (rootless)
+                          └── /run/user/<UID>/podman/podman.sock
+```
+
+
+# 1. Prerequistes
+
+Assume that WSL2 is installed. I am using Fedora based distro RHEL-10.
+
+
+## Install podman in WSL2
+
+```bash
+
+sudo dnf isntall -y podman
+```
+
+## Enable user session socket
+
+```bash
+systemctl --user enable --now podman.socket
+```
+
+# 2. Setup SSH access (Windows -> WSL2)
+
+Lets create SSH key in Windows
+
+```powershell
+ssh-keygen -t ed25519 -C "Podman-Windows-WSL2-Connection"
+```
+
+### Copy Public Key from Windows to WSL2
+
+Copy the following command output
+```powershell
+type $env:USERPROFILE\.ssh\id_ed25519.pub
+```
+
+Paste key in the `authorized_keys`
+
+```bash
+mkdir -p ~/.ssh
+vi ~/.ssh/authorized_keys
+```
+
+### Fix permission
+
+```bash
+chmod 600 ~/.ssh/authorized_keys
+```
+
+### Restart SSH service
+
+```bash
+sudo systemctl restart sshd
+```
+
+## Create config file for better SSH key managment
+
+```powerhsell
+notepad $env:USERPROFILE\.ssh\config
+```
+
+config content should be
+
+```
+Host rhel-wsl
+    HostName localhost
+    User <wsl2_username>
+    IdentityFile ~/.ssh/id_ed25519
+    IdentitiesOnly yes
+```
+
+# 3. Create Podman Desktop Connection
+
+If connection to the old machines are present, we should clean it first
+
+## Remove old connection
+
+```powershell
+podman system connection rm podman-machine-default
+podman system connection rm podman-machine-default-root
+```
+
+
+## Add WSL connection (IMPORTANT)
+
+- Replace `<wsl_username>` with WSL username (whoami)
+- Replace `<UID>` with correct value from WSL (id -u)
+
+```powershell
+podman system connection add rhel-wsl ^
+  ssh://<wsl_username>@localhost/run/user/<UID>/podman/podman.sock ^
+  --identity $env:USERPROFILE\.ssh\id_ed25519
+```
+
+## Set Default Connection
+
+```powershell
+podman system connection default rhel-wsl
+```
+
+
+
+
+# 🚨 COMMON ISSUES & FIXES
+
+
+## ❌ 1. open failed (SSH → Podman socket)
+
+✔ Fix:
+Ensure correct UID (/run/user/1000 vs 1002 mismatch)
+
+
+## ❌ 2. socket not found
+
+✔ Fix:
+
+systemctl --user restart podman.socket
+
+## ❌ 3. podman command works in WSL but not Windows
+
+✔ Fix:
+Wrong connection path in Podman Desktop
+Wrong SSH identity key
+
+
+## ❌ 4. SSH works but Podman fails
+
+✔ Fix:
+
+Use correct `/run/user/<UID>/podman/podman.sock`
+
+
+❌ 5. Permission denied (publickey)
+
+✔ Fix:
+
+Re-copy .pub key
+Fix .ssh permissions
+
+❌ 6. Issue: Permission denied (publickey)
+
+✔ Fix:
+
+Ensure correct key in authorized_keys
+Check permissions (600/700)
+
+❌ 7. Issue: "ssh-ed25519 not in PubkeyAcceptedAlgorithms"
+
+✔ Fix (RHEL crypto policy):
+
+```bash
+sudo tee /etc/ssh/sshd_config.d/99-ed25519.conf <<EOF
+PubkeyAcceptedAlgorithms +ssh-ed25519
+EOF
+sudo systemctl restart sshd
+```
+
+OR safer:
+
+```bash
+sudo update-crypto-policies --set DEFAULT
+sudo systemctl restart sshd
+```
+
+❌ 8. Issue: SSH connects but Podman fails
+
+✔ Cause: wrong UID path
+
+Check:
+
+```bash
+echo $XDG_RUNTIME_DIR
+```
+
+
+Must match:
+
+```
+/run/user/<UID>
+```
+
+# 🧠 KEY INSIGHTS
+
+
+WSL uses dynamic UID (often NOT 1000)
+
+Podman rootless socket depends on `/run/user/<UID>`
+SSH auth ≠ Podman socket access
+Podman Desktop VM is NOT needed
+
+
+
+# 🏁 Final Result
+
+You now have:
+
+Native Linux containers via WSL
+No VM overhead
+Full Podman Desktop integration
+Clean developer workflow
+
+
+💡 This setup is one of the cleanest ways to run containers on Windows today — lightweight, fast, and close to real Linux.
+
+Happy hacking 🚀
